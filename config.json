@@ -16,7 +16,7 @@
         "shippingOptions": [{
             "name": " ",
             "type": "FIXED_PRICE",
-            "regions": ["ALL"],
+            "regions": ["UNITED_STATES"],
             "services": [{
                 "name": " ",
                 "price": 0,

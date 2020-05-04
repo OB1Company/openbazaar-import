@@ -1,9 +1,12 @@
 const sharedImportCtrl = require("../shared/reformatListing"),
     request = require("request"),
     crypto = require('crypto'),
+    path = require("path"),
     HTMLParser = require('node-html-parser'),
     fetch = require('node-fetch'),
     then = require('then-request'),
+    util = require('util'),
+    puppeteer = require('puppeteer'),
     fs = require('fs');
 
 
@@ -15,7 +18,7 @@ exports.loadAmazonTopCategory = async (url) => {
 
         const filename = hash.digest('hex');
         const fileDir = "data/"+filename;
-        const filePath = fileDir + "/" + filename;
+        const filePath = path.join(fileDir, filename);
         var data = "";
 
         // Create cache directory for this category
@@ -56,22 +59,25 @@ exports.loadAmazonTopCategory = async (url) => {
             this.loadAmazonProductPage(url, fileDir);
         });
 
+        listingURLs = [listingURLs[0]];
+
         // Parse each into a CSV
         listingURLs.forEach((url) => {
             const amazonURL = url;
             var urlHash = crypto.createHash('sha256');
             urlHash.update(amazonURL);
-
             var filename = urlHash.digest('hex');
-            var filePath = fileDir + "/" + filename;
+            var filePath = path.join(fileDir, filename);
 
             console.log("Processing",filename,"into CSV...");
-
-            // Scrape into an OpenBazaar listing object
 
             // Parse the page
             var itemFile = fs.readFileSync(`${filePath}`);
             var page = HTMLParser.parse(itemFile);
+
+
+            getImages(filePath);
+            return;
 
             // Title
             var title = page.querySelector("#productTitle").innerHTML;
@@ -140,6 +146,63 @@ exports.loadAmazonTopCategory = async (url) => {
     }
 }
 
+
+function getImages(html) {
+
+    puppeteer.launch({
+        headless: false,
+    }).then(async browser => {
+        var [page] = await browser.pages()
+
+        var contentHtml = fs.readFileSync(html, 'utf8');
+        await page.setContent(contentHtml);
+
+      //  await page.goto('https://www.amazon.com/Toshiba-HDTB410XK3AA-Canvio-Portable-External/dp/B079D359S6/ref=sr_1_4?crid=VSLZBRRN2ZAG&keywords=hard+drive&qid=1565674639&refinements=p_36%3A-10000%2Cp_n_feature_two_browse-bin%3A5446812011&rnid=562234011&s=pc&sprefix=hard%2Caps%2C205&sr=1-4')
+
+        // Get coordinates of picture
+        var pos = await page.evaluate(() => {
+            var {x,y,width,height} = document.querySelector('#main-image-container').getBoundingClientRect();
+
+            console.log(document.querySelector('#main-image-container'))
+        })
+
+        console.log(document.querySelector('#main-image-container'))
+
+        //await page.mouse.click(pos.x+pos.width/2, pos.y+pos.height/2)
+    })
+
+    // const dom = new JSDOM(html,{ pretendToBeVisual: true, resources: "usable", runScripts: "dangerously" });
+    // var w = dom.window.document;
+    //
+    // var firstProductImage = w.querySelectorAll("img");
+    // console.log(firstProductImage.length);
+    //
+    // var i = w.querySelectorAll("#altImages img")[3];
+    // console.log(util.inspect(i, {depth: null}));
+    // console.log(i.getAttribute("src"));
+    //
+    // console.log(i.dispatchEvent(new dom.window.MouseEvent('mouseover', {'view':dom.window, 'bubbles':true, 'cancelable': true})));
+    // console.log(i.dispatchEvent(new dom.window.MouseEvent('click', {'view':dom.window, 'bubbles':true, 'cancelable': true})));
+    // firstProductImage = w.querySelectorAll("img");
+    //
+    // console.log(firstProductImage.length);
+    //
+    // const page2 = dom.window.innerHTML;
+
+    ;
+
+    // // Trigger hover over image
+    // console.log(firstProductImageThumb[1].getAttribute("type"));
+    // firstProductImageThumb[5].dispatchEvent(new dom.window.MouseEvent('mouseover', { 'view': dom.window, 'bubbles': true, 'cancelable': true }));
+    // firstProductImageThumb[5].dispatchEvent(new dom.window.MouseEvent('mouseover', { 'view': dom.window, 'bubbles': true, 'cancelable': true }));
+    //
+    // const page2 = dom.window.innerHTML;
+    //
+    // var secondProductImage = w.querySelectorAll(".a-declarative .a-dynamic-image")[0];
+    // console.log("Second Image:",secondProductImage);
+
+}
+
 async function processListing(item, product) {
 
     imageList = await sendImageToOB(product);
@@ -168,6 +231,7 @@ async function getVendorListing(formattedImageList, listingOne){
     } catch (err) {
         let importFailure = { importStatus: "Failed", message: err, listingHandle: listingOne.title };
         console.log(importFailure)
+        console.log(listingOne);
         listingErrorsArray.push(importFailure);
     };
 }
@@ -207,7 +271,7 @@ exports.loadAmazonProductPage = async (url, fileDir) => {
         hash.update(amazonURL);
 
         const filename = hash.digest('hex');
-        const filePath = fileDir + "/" + filename;
+        const filePath = path.join(fileDir, filename);
 
         if (fs.existsSync(filePath)) {
             console.log("Retrieving", filename, "from cache");
