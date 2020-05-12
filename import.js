@@ -9,7 +9,6 @@ const shopifyImportCtrl = require("./importScripts/shopify"),
     importFileName = process.argv.slice(-1)[0],
     importType = process.argv.slice(-2)[0];
 
-
 (() => {
     if (importType && importFileName && process.argv.length == 4) {
 
@@ -17,12 +16,17 @@ const shopifyImportCtrl = require("./importScripts/shopify"),
         if(importType == "amazon") {
             console.log("\nImporting Listings from Amazon URL\n");
 
-
-
-            // loadAmazonTopCategory('https://www.amazon.com/Best-Sellers-Electronics-Video-Game-Consoles-Accessories/zgbs/electronics/7926841011/');
             amazonImportCtrl.loadAmazonTopCategory(process.argv.slice(-1)[0]);
 
             return;
+        }
+
+        if(importType == "amazonListing") {
+          console.log("\nImporting Listing from Amazon URL\n");
+
+          amazonImportCtrl.importAmazonPage(process.argv.slice(-1)[0]);
+
+          return;
         }
 
         if (fs.existsSync(importFileName)) {

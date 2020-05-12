@@ -78,14 +78,16 @@ exports.sendImagesToOpenBazaarNode = (imageList) => {
         if (imageList.length == 0) {
             // Use default image if no images are provided
             const productImageFile = fs.readFileSync(__dirname + "/../static/openbazaar-logo.png");
+            const rand = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
             openBazaarImageList.push({
-                filename: String(Date.now()),
+                filename: String(Date.now()+rand),
                 image: productImageFile.toString("base64")
             });
         } else {
             for (let i = 0; i < imageList.length; i++) {
+              const rand = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
                 openBazaarImageList.push({
-                    filename: String(Date.now()),
+                    filename: String(Date.now()+rand),
                     image: imageList[i]
                 });
             };
@@ -108,7 +110,6 @@ exports.createVendorListing = (data) => {
     return new Promise(async (resolve, reject) => {
         // Reformat listing data to match OB's specifications
         const listingOne = this.generateOBProductObject(data);
-        console.log(listingOne);
         this.sendListingToOpenBazaarNode(listingOne).then(() => {
             resolve(listingOne);
         }).catch((err) => {

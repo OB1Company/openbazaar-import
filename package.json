@@ -11,6 +11,8 @@
   "dependencies": {
     "canvas": "^2.6.1",
     "crypto": "^1.0.1",
+    "fetch-base64": "^2.1.2",
+    "filereader": "^0.10.3",
     "node-fetch": "^2.6.0",
     "node-html-parser": "^1.2.16",
     "papaparse": "^5.0.2",

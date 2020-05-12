@@ -3,11 +3,15 @@ const sharedImportCtrl = require("../shared/reformatListing"),
     crypto = require('crypto'),
     path = require("path"),
     HTMLParser = require('node-html-parser'),
+    FileReader = require('filereader'),
     fetch = require('node-fetch'),
+    fetchBase64 = require('fetch-base64'),
     then = require('then-request'),
     util = require('util'),
     puppeteer = require('puppeteer'),
     fs = require('fs');
+
+const performance = require('perf_hooks').performance;
 
 
 // Grab web page and cache in data folder
@@ -59,87 +63,26 @@ exports.loadAmazonTopCategory = async (url) => {
             this.loadAmazonProductPage(url, fileDir);
         });
 
-        listingURLs = [listingURLs[0]];
+        const getpages = async (listingURLs) => {
+          listingURLs.forEach((url) => {
 
-        // Parse each into a CSV
-        listingURLs.forEach((url) => {
-            const amazonURL = url;
-            var urlHash = crypto.createHash('sha256');
-            urlHash.update(amazonURL);
-            var filename = urlHash.digest('hex');
-            var filePath = path.join(fileDir, filename);
-
-            console.log("Processing",filename,"into CSV...");
-
-            // Parse the page
-            var itemFile = fs.readFileSync(`${filePath}`);
-            var page = HTMLParser.parse(itemFile);
-
-
-            getImages(filePath);
-            return;
-
-            // Title
-            var title = page.querySelector("#productTitle").innerHTML;
-            if(title == null) {
-                title = "";
+            const getPage = async (url) => {
+              try {
+                //await this.importAmazonPage(url)
+                await sleeper()
+              } catch (err) {
+                console.error(err);
+              }
             }
 
-            // Price
-            if(page.querySelector("#priceblock_ourprice")) {
-                var price = removeNewLines(page.querySelector("#priceblock_ourprice").innerHTML);
-
-                // Description
-                if(page.querySelector("#productDescription")) {
-                    description = removeNewLines(page.querySelector("#productDescription").innerHTML);
-                } else {
-                    description = removeNewLines(page.querySelector("#featurebullets_feature_div").innerHTML);
-                }
-
-                // Tags
-                breadcrumbs = page.querySelector("#wayfinding-breadcrumbs_feature_div");
-                links = breadcrumbs.querySelectorAll(".a-link-normal");
-                var tags = [];
-                links.forEach((link) => {
-                    tags.push(link.innerHTML.trim());
-                });
-
-                // Only getting the main image
-                var productImage = page.querySelector(".imgTagWrapper img").getAttribute("src");
-                productImage.replace(/\n/g,"").trim();
-                product = productImage.replace("data:image/jpeg;base64,","");
-
-                var item = {
-                    price: removeNewLines(price.replace("$","")),
-                    acceptedCoins: [],
-                    shippingOptions: [],
-                    title: removeNewLines(title),
-                    description: description,
-                    tags: tags,
-                    categories: [tags[0]],
-                     options: [],
-                    skus: [{"bigQuantity":"-1"}],
-                    // condition: "",
-                    contractType: "PHYSICAL_GOOD",
-                    // termsAndConditions: "",
-                    // refundPolicy: "",
-                    // moderators: [],
-                    // coupons: [],
-                    // taxes: [],
-                    // processingTime: "~",
-                    // escrow: true
-                };
+            getPage(url);
 
 
-                processListing(item, product);
+            console.log('Finished', url)
+          })
+        }
 
-            } else {
-                console.error("Item Not In Stock:",filename);
-            }
-
-        })
-
-        console.log("DONE");
+        getpages(listingURLs)
 
     } catch (err) {
         console.error(err);
@@ -147,67 +90,223 @@ exports.loadAmazonTopCategory = async (url) => {
 }
 
 
-function getImages(html) {
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
-    puppeteer.launch({
-        headless: false,
-    }).then(async browser => {
-        var [page] = await browser.pages()
+const sleeper = async () => {
+  await sleep(1000);
+}
 
-        var contentHtml = fs.readFileSync(html, 'utf8');
-        await page.setContent(contentHtml);
+exports.importAmazonPage = async (url) => {
 
-      //  await page.goto('https://www.amazon.com/Toshiba-HDTB410XK3AA-Canvio-Portable-External/dp/B079D359S6/ref=sr_1_4?crid=VSLZBRRN2ZAG&keywords=hard+drive&qid=1565674639&refinements=p_36%3A-10000%2Cp_n_feature_two_browse-bin%3A5446812011&rnid=562234011&s=pc&sprefix=hard%2Caps%2C205&sr=1-4')
+  const hash = crypto.createHash('sha256');
+  hash.update(url);
 
-        // Get coordinates of picture
-        var pos = await page.evaluate(() => {
-            var {x,y,width,height} = document.querySelector('#main-image-container').getBoundingClientRect();
+  const filename = hash.digest('hex');
+  const fileDir = "data/"+filename;
+  const filePath = path.join(fileDir, filename);
+  var data = "";
 
-            console.log(document.querySelector('#main-image-container'))
-        })
+  // Create cache directory for this category
+  if(!fs.existsSync("data")) {
+    fs.mkdirSync("data");
+  }
 
-        console.log(document.querySelector('#main-image-container'))
+  if(!fs.existsSync(fileDir)) {
+    fs.mkdirSync(fileDir);
+  }
 
-        //await page.mouse.click(pos.x+pos.width/2, pos.y+pos.height/2)
+  if(fs.existsSync(filePath)) {
+    console.log("Retrieving from cache\n");
+    data = await fs.promises.readFile(filePath);
+  } else {
+    console.log("Retrieving from URL\n");
+    const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"}});
+    data = await response.text();
+    fs.writeFileSync(filePath, data, function (err,data) {
+      if (err) {
+        return console.log(err);
+      }
+    });
+  }
+
+  const process = async () => {
+
+    const amazonURL = url;
+    var urlHash = crypto.createHash('sha256');
+    urlHash.update(amazonURL);
+    var filename = urlHash.digest('hex');
+    var filePath = path.join(fileDir, filename);
+
+    console.log("Processing", filename, "into CSV...");
+
+    // Parse the page
+    var itemFile = fs.readFileSync(`${filePath}`);
+    var page = HTMLParser.parse(itemFile);
+
+    var imgs;
+    const convert = async function (url) {
+      imgs = await convertImages(url);
+      console.log(imgs);
+      console.log("Finished converting images");
+      return imgs
+    }
+
+    var imgs = convert(url);
+
+    imgs.then((result) => {
+      const base64images = result;
+
+      // Title
+      var title = page.querySelector("#productTitle").innerHTML;
+      if (title == null) {
+        title = "";
+      }
+
+      // Price
+      if (page.querySelector("#priceblock_ourprice")) {
+        console.log("Processing product...")
+        var price = removeNewLines(page.querySelector("#priceblock_ourprice").innerHTML);
+
+        // Description
+        if (page.querySelector("#productDescription")) {
+          description = removeNewLines(page.querySelector("#productDescription").innerHTML);
+        } else {
+          description = removeNewLines(page.querySelector("#featurebullets_feature_div").innerHTML);
+        }
+
+        // Tags
+        breadcrumbs = page.querySelector("#wayfinding-breadcrumbs_feature_div");
+        links = breadcrumbs.querySelectorAll(".a-link-normal");
+        var tags = [];
+        links.forEach((link) => {
+          tags.push(link.innerHTML.trim());
+        });
+
+        var item = {
+          price: removeNewLines(price.replace("$", "")),
+          acceptedCoins: [],
+          shippingOptions: [],
+          title: removeNewLines(title),
+          description: description,
+          tags: tags,
+          categories: [tags[0]],
+          options: [],
+          skus: [{"bigQuantity": "-1"}],
+          condition: "",
+          contractType: "PHYSICAL_GOOD",
+          termsAndConditions: "",
+          refundPolicy: "",
+          moderators: [],
+          coupons: [],
+          taxes: [],
+          processingTime: "~",
+          escrow: true
+        };
+
+        processListing(item, base64images).then(() => {
+          console.log("Imported item...")
+          return
+        });
+
+      } else {
+        console.error("Item Not In Stock:", filename);
+      }
     })
+  }
 
-    // const dom = new JSDOM(html,{ pretendToBeVisual: true, resources: "usable", runScripts: "dangerously" });
-    // var w = dom.window.document;
-    //
-    // var firstProductImage = w.querySelectorAll("img");
-    // console.log(firstProductImage.length);
-    //
-    // var i = w.querySelectorAll("#altImages img")[3];
-    // console.log(util.inspect(i, {depth: null}));
-    // console.log(i.getAttribute("src"));
-    //
-    // console.log(i.dispatchEvent(new dom.window.MouseEvent('mouseover', {'view':dom.window, 'bubbles':true, 'cancelable': true})));
-    // console.log(i.dispatchEvent(new dom.window.MouseEvent('click', {'view':dom.window, 'bubbles':true, 'cancelable': true})));
-    // firstProductImage = w.querySelectorAll("img");
-    //
-    // console.log(firstProductImage.length);
-    //
-    // const page2 = dom.window.innerHTML;
-
-    ;
-
-    // // Trigger hover over image
-    // console.log(firstProductImageThumb[1].getAttribute("type"));
-    // firstProductImageThumb[5].dispatchEvent(new dom.window.MouseEvent('mouseover', { 'view': dom.window, 'bubbles': true, 'cancelable': true }));
-    // firstProductImageThumb[5].dispatchEvent(new dom.window.MouseEvent('mouseover', { 'view': dom.window, 'bubbles': true, 'cancelable': true }));
-    //
-    // const page2 = dom.window.innerHTML;
-    //
-    // var secondProductImage = w.querySelectorAll(".a-declarative .a-dynamic-image")[0];
-    // console.log("Second Image:",secondProductImage);
+  process(url)
 
 }
 
-async function processListing(item, product) {
+async function fetchBase64Image(image) {
+  return fetchBase64.remote(image).catch((reason) => {});
+}
 
-    imageList = await sendImageToOB(product);
+async function convertImages(url) {
+
+  try {
+    const productImages = await getImages(url);
+
+    console.log(productImages)
+
+    const promises = productImages.map(async image => {
+      const data = await fetchBase64Image(image);
+
+      // strip metadata from front of base64 image
+      const cleanImage = data[1].replace("data:image/jpeg;base64,", "");
+
+      return await cleanImage;
+    });
+
+    return Promise.all(promises);
+
+  } catch(err) {
+    console.error(err);
+  }
+}
+
+async function getImages(url) {
+
+    try {
+      // open the headless browser
+      var browser = await puppeteer.launch({ headless: true, args: [
+        '--no-sandbox',
+        '--disable-web-security', '--disable-dev-profile',
+        '--user-agent="Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1"'] });
+
+      // open a new page
+      var page = await browser.newPage();
+
+      await page.goto(url);
+
+      await page.waitForSelector('#main-image');
+
+      // Click to load carousel of images
+      const textContent = await page.evaluate(() => {
+          var item = document.querySelector("#main-image");
+            const mouseoverEvent = new Event('click', {bubbles: true});
+            item.dispatchEvent(mouseoverEvent);
+            return true;
+      });
+
+      // Wait for the carousel to show up
+      await page.waitForSelector(".mini_carousel img");
+
+      var carouselImages = await page.evaluate(() => {
+
+        var items = document.querySelectorAll(".mini_carousel img");
+        var images = [];
+
+        // Grab big image first
+        var imageObjs = document.querySelectorAll('.immersive-carousel-img-manual-load');
+
+        for(i=0; i<items.length; i++) {
+          images.push(imageObjs[i].getAttribute("src"));
+        }
+
+        return images;
+      });
+
+      await browser.close();
+      return carouselImages;
+
+} catch (err) {
+  // Catch and display errors
+  console.error(err);
+  await browser.close();
+  console.error("Browser Closed");
+}
+};
 
 
+async function processListing(item, productImages) {
+
+    console.log("Sending images to OpenBazaar daemon...")
+    var imageList = await sendImagesToOB(productImages);
 
     listingOne = sharedImportCtrl.formatListingForImport(item);
 
@@ -222,12 +321,12 @@ async function getVendorListing(formattedImageList, listingOne){
     try {
         listingErrorsArray = [];
         listingSuccessArray = [];
-        console.log(formattedImageList);
         listingOne.images = formattedImageList;
         await sharedImportCtrl.createVendorListing(listingOne);
         let importSuccess = { importStatus: "Success", listingHandle: listingOne.title };
         console.log(importSuccess)
         listingSuccessArray.push(importSuccess);
+        console.log("Imported",listingSuccessArray.length,"listings...");
     } catch (err) {
         let importFailure = { importStatus: "Failed", message: err, listingHandle: listingOne.title };
         console.log(importFailure)
@@ -236,8 +335,9 @@ async function getVendorListing(formattedImageList, listingOne){
     };
 }
 
-async function sendImageToOB(productImage) {
-    let formattedImageList = await sharedImportCtrl.sendImagesToOpenBazaarNode([productImage]);
+async function sendImagesToOB(productImages) {
+
+    let formattedImageList = await sharedImportCtrl.sendImagesToOpenBazaarNode(productImages);
 
     if (formattedImageList) {
         for (let z = 0; z < formattedImageList.length; z++) {

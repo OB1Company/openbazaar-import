@@ -12,7 +12,7 @@
         "format": "FIXED_PRICE",
         "acceptedCurrencies": ["BTC", "LTC", "BCH", "ZEC", "ETH"],
         "pricingCurrency": "USD",
-        "productExpiry": "2137-12-31T05:00:00.000Z",
+        "productExpiry": "2037-12-31T05:00:00.000Z",
         "shippingOptions": [{
             "name": " ",
             "type": "FIXED_PRICE",
